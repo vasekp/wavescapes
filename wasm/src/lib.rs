@@ -16,38 +16,37 @@ const VAR_RATE: f32 = 3.0;
 const SAMPLES: usize = 128;
 const DIVIDER: f32 = approx_sqrt(DIM as f32);
 
-struct State {
+struct Instance {
     rng: rand::rngs::SmallRng,
-    herm: [Mat; ITER],
-    unit: Mat,
-    cx_step: [Complex<f32>; DIM],
-    i_dt: Complex<f32>,
-    cx: [Complex<f32>; DIM],
+    params: Params,
+    generator: Generator,
+    phase: f32,
     fix_counter: u32,
     fix_counter_ceil: u32,
-    phase: f32,
+}
+
+struct Params {
+    herm: [Mat; ITER],
+    unit: Mat,
+}
+
+struct Generator {
+    cx_step: [Complex<f32>; DIM],
+    par_step: f32,
+    cx: [Complex<f32>; DIM],
 }
 
 #[wasm_bindgen]
-impl State {
-    fn new(sample_rate: f32) -> State {
+impl Instance {
+    fn new(sample_rate: f32) -> Instance {
         let mut rng = rand::rngs::SmallRng::seed_from_u64(
                 (random() * 2.0f64.powi(f64::MANTISSA_DIGITS as i32)) as u64);
-        let dist = Uniform::new(-1., 1.).unwrap();
-        let mut herm = [Default::default(); ITER];
-        for ix in 0..ITER {
-            herm[ix] = fix_herm(Mat::from_fn(|_, _| Complex::new(rng.sample(dist), rng.sample(dist))));
-        }
-        let unit = fix_unit(Mat::from_fn(|_, _| Complex::new(rng.sample(dist), rng.sample(dist))));
-        let bf = FREQ / sample_rate * std::f32::consts::TAU;
-        let cx_step = MTP.map(|m| Complex::new(0.0, m * bf).exp());
-        State {
+        let params = Params::new(&mut rng);
+        let generator = Generator::new(FREQ / sample_rate * std::f32::consts::TAU, VAR_RATE / sample_rate);
+        Instance {
             rng,
-            herm,
-            unit,
-            cx_step,
-            i_dt: Complex::new(0.0, VAR_RATE / sample_rate * (SAMPLES as f32)),
-            cx: [1.0.into(); DIM],
+            params,
+            generator,
             fix_counter: 0,
             fix_counter_ceil: (sample_rate as u32) / (SAMPLES as u32),
             phase: 0.0,
@@ -55,82 +54,104 @@ impl State {
     }
 
     pub fn new_handle(sample_rate: u32) -> usize {
-        let bx = Box::new(State::new(sample_rate as f32));
-        Box::leak(bx) as *mut State as usize
+        let bx = Box::new(Instance::new(sample_rate as f32));
+        Box::leak(bx) as *mut Instance as usize
     }
 
     unsafe fn from_handle(handle: usize) -> &'static mut Self {
-        unsafe { &mut *(handle as *mut State) }
+        unsafe { &mut *(handle as *mut Instance) }
+    }
+}
+
+impl Params {
+    fn new(rng: &mut (impl Rng + SeedableRng)) -> Params {
+        let dist = Uniform::new(-1., 1.).unwrap();
+        let mut herm = [Default::default(); ITER];
+        for ix in 0..ITER {
+            herm[ix] = fix_herm(Mat::from_fn(|_, _| Complex::new(rng.sample(dist), rng.sample(dist))));
+        }
+        let unit = fix_unit(Mat::from_fn(|_, _| Complex::new(rng.sample(dist), rng.sample(dist))));
+        Params { herm, unit }
+    }
+
+    fn evolve(&mut self, dt: f32) {
+        let i_dt = Complex::new(0.0, dt);
+        for ix in 1..ITER {
+            self.herm[ix] += (self.herm[ix - 1] * self.herm[ix] - self.herm[ix] * self.herm[ix - 1]) * i_dt;
+        }
+        self.unit += self.herm[ITER - 1] * self.unit * i_dt;
+    }
+
+    fn normalize(&mut self) {
+        for mx in &mut self.herm {
+            *mx = fix_herm(*mx);
+        }
+        self.unit = fix_unit(self.unit);
+    }
+
+    fn mutate(&mut self, rng: &mut (impl Rng + SeedableRng)) {
+        let dist = Uniform::new(-1., 1.).unwrap();
+        self.herm[0] = fix_herm(Mat::from_fn(|_, _|
+            Complex::new(rng.sample(dist), rng.sample(dist))));
+    }
+}
+
+impl Generator {
+    fn new(dt1: f32, dt2: f32) -> Generator {
+        let cx_step = MTP.map(|m| Complex::new(0.0, m * dt1).exp());
+        let cx = [1.0.into(); DIM];
+        Generator { cx_step, par_step: dt2, cx }
+    }
+
+    fn generate(&mut self, data: &mut [f32], params: &mut Params) {
+        params.evolve((SAMPLES as f32) * self.par_step);
+        for x in data {
+            let mut res: Complex<f32> = 0.0.into();
+            for ix in 0..DIM {
+                self.cx[ix] *= self.cx_step[ix];
+                res += self.cx[ix] * params.unit[ix];
+            }
+            *x = res.re / DIVIDER;
+        }
+    }
+
+    fn normalize(&mut self) {
+        for z in &mut self.cx {
+            *z /= z.abs();
+        }
     }
 }
 
 #[wasm_bindgen]
 pub fn process(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
-    let state = unsafe { State::from_handle(handle) };
-    for ix in 1..ITER {
-        state.herm[ix] += (state.herm[ix - 1] * state.herm[ix]
-            - state.herm[ix] * state.herm[ix - 1]) * state.i_dt;
-    }
-    state.unit += state.herm[ITER - 1] * state.unit * state.i_dt;
-    state.phase += state.i_dt.im;
+    let inst = unsafe { Instance::from_handle(handle) };
+    //inst.phase += dt;
+    //res2 *= Complex::new(0.0, inst.phase).exp();
     assert!(left.len() == SAMPLES);
     assert!(right.len() == SAMPLES);
-    for sample in 0..SAMPLES {
-        let mut res1: Complex<f32> = 0.0.into();
-        for ix in 0..DIM {
-            state.cx[ix] *= state.cx_step[ix];
-        }
-        for ix in 0..DIM {
-            res1 += state.cx[ix] * state.unit[ix];
-        }
-        let mut res2: Complex<f32> = 0.0.into();
-        for ix in 0..DIM {
-            res2 += state.cx[ix] * state.unit[ix];
-        }
-        res2 *= Complex::new(0.0, state.phase).exp();
-        left[sample] = res1.re / DIVIDER;
-        right[sample] = res2.re / DIVIDER;
+    inst.generator.generate(left, &mut inst.params);
+    for ix in 0..SAMPLES {
+        right[ix] = left[ix];
     }
-    state.fix_counter += 1;
-    if state.fix_counter == state.fix_counter_ceil {
-        for z in &mut state.cx {
-            *z /= z.abs();
-        }
-        for mx in &mut state.herm {
-            *mx = fix_herm(*mx);
-        }
-        state.unit = fix_unit(state.unit);
-        state.fix_counter = 0;
+    inst.fix_counter += 1;
+    if inst.fix_counter == inst.fix_counter_ceil {
+        inst.params.normalize();
+        inst.generator.normalize();
+        inst.fix_counter = 0;
         // use this opportunity for more variation
-        let dist = Uniform::new(-1., 1.).unwrap();
-        state.herm[0] = fix_herm(Mat::from_fn(|_, _|
-            Complex::new(state.rng.sample(dist), state.rng.sample(dist))));
+        inst.params.mutate(&mut inst.rng);
     }
 }
 
 #[wasm_bindgen]
 pub fn get_sample(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
-    let state = unsafe { State::from_handle(handle) };
+    let inst = unsafe { Instance::from_handle(handle) };
     let len = left.len();
     assert!(right.len() == left.len());
-    let dt = 4.0 * std::f32::consts::TAU / (len as f32);
-    let cx_step = MTP.map(|m| Complex::new(0.0, m * dt).exp());
-    let mut cx: [Complex<f32>; DIM] = [1.0.into(); DIM];
-    for sample in 0..len {
-        let mut res1: Complex<f32> = 0.0.into();
-        for ix in 0..DIM {
-            cx[ix] *= cx_step[ix];
-        }
-        for ix in 0..DIM {
-            res1 += cx[ix] * state.unit[ix];
-        }
-        let mut res2: Complex<f32> = 0.0.into();
-        for ix in 0..DIM {
-            res2 += cx[ix] * state.unit[ix];
-        }
-        res2 *= Complex::new(0.0, state.phase).exp();
-        left[sample] = res1.re / DIVIDER;
-        right[sample] = res2.re / DIVIDER;
+    let mut generator = Generator::new(4.0 * std::f32::consts::TAU / (len as f32), 0.0);
+    generator.generate(left, &mut inst.params);
+    for ix in 0..len {
+        right[ix] = left[ix];
     }
 }
 

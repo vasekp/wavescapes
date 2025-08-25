@@ -7,7 +7,7 @@ class RandomNoiseProcessor extends AudioWorkletProcessor {
       if(ev.data.wasm) {
         wasm.initSync({ module: ev.data.wasm })
         this.processFn = wasm.process;
-        this.handle = wasm.State.new_handle(sampleRate);
+        this.handle = wasm.Instance.new_handle(sampleRate);
       } else if(this.handle && ev.data.buffer) {
         let buffer = ev.data.buffer;
         wasm.get_sample(buffer.left, buffer.right, this.handle);
