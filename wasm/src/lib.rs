@@ -18,9 +18,8 @@ const DIVIDER: f32 = approx_sqrt(DIM as f32);
 
 struct Instance {
     rng: rand::rngs::SmallRng,
-    params: Params,
-    generator: Generator,
-    phase: f32,
+    params: [Params; 2],
+    generator: [Generator; 2],
     fix_counter: u32,
     fix_counter_ceil: u32,
 }
@@ -41,15 +40,16 @@ impl Instance {
     fn new(sample_rate: f32) -> Instance {
         let mut rng = rand::rngs::SmallRng::seed_from_u64(
                 (random() * 2.0f64.powi(f64::MANTISSA_DIGITS as i32)) as u64);
-        let params = Params::new(&mut rng);
-        let generator = Generator::new(FREQ / sample_rate * std::f32::consts::TAU, VAR_RATE / sample_rate);
+        let params = [Params::new(&mut rng), Params::new(&mut rng)];
+        let dt1 = FREQ / sample_rate * std::f32::consts::TAU;
+        let dt2 = VAR_RATE / sample_rate;
+        let generator = [Generator::new(dt1, dt2), Generator::new(dt1, dt2)];
         Instance {
             rng,
             params,
             generator,
             fix_counter: 0,
             fix_counter_ceil: (sample_rate as u32) / (SAMPLES as u32),
-            phase: 0.0,
         }
     }
 
@@ -125,21 +125,20 @@ impl Generator {
 #[wasm_bindgen]
 pub fn process(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
     let inst = unsafe { Instance::from_handle(handle) };
-    //inst.phase += dt;
-    //res2 *= Complex::new(0.0, inst.phase).exp();
     assert!(left.len() == SAMPLES);
     assert!(right.len() == SAMPLES);
-    inst.generator.generate(left, &mut inst.params);
-    for ix in 0..SAMPLES {
-        right[ix] = left[ix];
-    }
+    inst.generator[0].generate(left, &mut inst.params[0]);
+    inst.generator[1].generate(right, &mut inst.params[1]);
     inst.fix_counter += 1;
     if inst.fix_counter == inst.fix_counter_ceil {
-        inst.params.normalize();
-        inst.generator.normalize();
-        inst.fix_counter = 0;
+        inst.params[0].normalize();
+        inst.params[1].normalize();
+        inst.generator[0].normalize();
+        inst.generator[1].normalize();
         // use this opportunity for more variation
-        inst.params.mutate(&mut inst.rng);
+        inst.params[0].mutate(&mut inst.rng);
+        inst.params[1].mutate(&mut inst.rng);
+        inst.fix_counter = 0;
     }
 }
 
@@ -149,10 +148,9 @@ pub fn get_sample(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
     let len = left.len();
     assert!(right.len() == left.len());
     let mut generator = Generator::new(4.0 * std::f32::consts::TAU / (len as f32), 0.0);
-    generator.generate(left, &mut inst.params);
-    for ix in 0..len {
-        right[ix] = left[ix];
-    }
+    generator.generate(left, &mut inst.params[0]);
+    let mut generator = Generator::new(4.0 * std::f32::consts::TAU / (len as f32), 0.0);
+    generator.generate(right, &mut inst.params[1]);
 }
 
 fn fix_herm(mut m: Mat) -> Mat {
