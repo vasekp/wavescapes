@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <title>Wavescapes</title>
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <input type="checkbox" id="play">
+    <label for="play">Play</label>
+    <svg width="500" height="500" viewBox="0 -1 6.28 2">
+      <g fill="none" stroke-width="0.05" transform="scale(1 -1)">
+        <path id="pathLeft" stroke="blue" d="M 0 0 L 6.28 0"/>
+        <path id="pathRight" stroke="red" d="M 0 0 L 6.28 0" style="mix-blend-mode: multiply"/>
+      </g>
+    </svg>
+  </body>
+</html>
