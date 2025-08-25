@@ -5,7 +5,8 @@ use rand::{Rng, distr::Uniform, SeedableRng};
 // Compile with:
 // RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web
 
-const DIM: usize = 7;
+const MTP: [f32; 7] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0];
+const DIM: usize = MTP.len();
 type Mat = SMatrix::<Complex<f32>, DIM, DIM>;
 
 const ITER: usize = 3;
@@ -24,6 +25,7 @@ struct State {
     cx: [Complex<f32>; DIM],
     fix_counter: u32,
     fix_counter_ceil: u32,
+    phase: f32,
 }
 
 #[wasm_bindgen]
@@ -38,18 +40,7 @@ impl State {
         }
         let unit = fix_unit(Mat::from_fn(|_, _| Complex::new(rng.sample(dist), rng.sample(dist))));
         let bf = FREQ / sample_rate * std::f32::consts::TAU;
-        let mut cx_step = [Default::default(); DIM];
-        for ix in 0..3 {
-            cx_step[ix] = Complex::new(0.0, ((ix + 1) as f32) * bf).exp();
-        }
-        let bf = 5./4. * FREQ / sample_rate * std::f32::consts::TAU;
-        for ix in 0..2 {
-            cx_step[3 + ix] = Complex::new(0.0, ((ix + 1) as f32) * bf).exp();
-        }
-        let bf = 3./2. * FREQ / sample_rate * std::f32::consts::TAU;
-        for ix in 0..2 {
-            cx_step[5 + ix] = Complex::new(0.0, ((ix + 1) as f32) * bf).exp();
-        }
+        let cx_step = MTP.map(|m| Complex::new(0.0, m * bf).exp());
         State {
             rng,
             herm,
@@ -59,6 +50,7 @@ impl State {
             cx: [1.0.into(); DIM],
             fix_counter: 0,
             fix_counter_ceil: (sample_rate as u32) / (SAMPLES as u32),
+            phase: 0.0,
         }
     }
 
@@ -80,6 +72,7 @@ pub fn process(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
             - state.herm[ix] * state.herm[ix - 1]) * state.i_dt;
     }
     state.unit += state.herm[ITER - 1] * state.unit * state.i_dt;
+    state.phase += state.i_dt.im;
     assert!(left.len() == SAMPLES);
     assert!(right.len() == SAMPLES);
     for sample in 0..SAMPLES {
@@ -87,13 +80,14 @@ pub fn process(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
         for ix in 0..DIM {
             state.cx[ix] *= state.cx_step[ix];
         }
-        for ix in 0..4 {
+        for ix in 0..DIM {
             res1 += state.cx[ix] * state.unit[ix];
         }
         let mut res2: Complex<f32> = 0.0.into();
-        for ix in 4..7 {
+        for ix in 0..DIM {
             res2 += state.cx[ix] * state.unit[ix];
         }
+        res2 *= Complex::new(0.0, state.phase).exp();
         left[sample] = res1.re / DIVIDER;
         right[sample] = res2.re / DIVIDER;
     }
@@ -120,29 +114,21 @@ pub fn get_sample(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
     let len = left.len();
     assert!(right.len() == left.len());
     let dt = 4.0 * std::f32::consts::TAU / (len as f32);
-    let mut cx_step = [Default::default(); DIM];
-    for ix in 0..3 {
-        cx_step[ix] = Complex::new(0.0, ((ix + 1) as f32) * dt).exp();
-    }
-    for ix in 0..2 {
-        cx_step[3 + ix] = Complex::new(0.0, ((ix + 1) as f32) * 5./4. * dt).exp();
-    }
-    for ix in 0..2 {
-        cx_step[5 + ix] = Complex::new(0.0, ((ix + 1) as f32) * 3./2. * dt).exp();
-    }
+    let cx_step = MTP.map(|m| Complex::new(0.0, m * dt).exp());
     let mut cx: [Complex<f32>; DIM] = [1.0.into(); DIM];
     for sample in 0..len {
         let mut res1: Complex<f32> = 0.0.into();
         for ix in 0..DIM {
             cx[ix] *= cx_step[ix];
         }
-        for ix in 0..4 {
+        for ix in 0..DIM {
             res1 += cx[ix] * state.unit[ix];
         }
         let mut res2: Complex<f32> = 0.0.into();
-        for ix in 4..7 {
+        for ix in 0..DIM {
             res2 += cx[ix] * state.unit[ix];
         }
+        res2 *= Complex::new(0.0, state.phase).exp();
         left[sample] = res1.re / DIVIDER;
         right[sample] = res2.re / DIVIDER;
     }
