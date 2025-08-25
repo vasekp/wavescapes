@@ -5,14 +5,14 @@ use rand::{Rng, distr::Uniform, SeedableRng};
 // Compile with:
 // RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web
 
-const MTP: [f32; 7] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0];
+const MTP: [f32; 6] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
 const DIM: usize = MTP.len();
 type Mat = SMatrix::<Complex<f32>, DIM, DIM>;
 
 const ITER: usize = 3;
 
 const FREQ: f32 = 100.0;
-const VAR_RATE: f32 = 3.0;
+const VAR_RATE: f32 = 1.0;
 const SAMPLES: usize = 128;
 const DIVIDER: f32 = approx_sqrt(DIM as f32);
 
@@ -109,7 +109,7 @@ impl Generator {
             let mut res: Complex<f32> = 0.0.into();
             for ix in 0..DIM {
                 self.cx[ix] *= self.cx_step[ix];
-                res += self.cx[ix] * params.unit[ix];
+                res += self.cx[ix] * params.unit[ix] / MTP[ix];
             }
             *x = res.re / DIVIDER;
         }
