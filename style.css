@@ -1,0 +1,47 @@
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #334;
+}
+
+input {
+  display: none;
+}
+
+label {
+  position: absolute;
+  bottom: 3rem;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-size: 200%;
+  z-index: 1;
+}
+
+input:not(:checked) + label::after {
+  content: '\23f5';
+}
+
+input:checked + label::after {
+  content: '\23f8';
+}
+
+svg {
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+#pathLeft {
+  stroke: #7ad;
+}
+
+#pathRight {
+  stroke: #f77;
+  mix-blend-mode: overlay;
+}

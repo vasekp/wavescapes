@@ -2,15 +2,18 @@
 <html lang="cs">
   <head>
     <title>Wavescapes</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, minimum-scale=1.0"/>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
     <script type="module" src="main.js"></script>
   </head>
   <body>
     <input type="checkbox" id="play">
-    <label for="play">Play</label>
-    <svg width="500" height="500" viewBox="0 -1 6.28 2">
+    <label for="play"></label>
+    <svg viewBox="0 -1 6.28 2">
       <g fill="none" stroke-width="0.05" transform="scale(1 -1)">
-        <path id="pathLeft" stroke="blue" d="M 0 0 L 6.28 0"/>
-        <path id="pathRight" stroke="red" d="M 0 0 L 6.28 0" style="mix-blend-mode: multiply"/>
+        <path id="pathLeft" d="M 0 0 L 6.28 0"/>
+        <path id="pathRight" d="M 0 0 L 6.28 0"/>
       </g>
     </svg>
   </body>
