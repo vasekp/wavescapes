@@ -7,7 +7,7 @@ node.connect(ctx.destination);
 
 let wasm = await fetch('./wasm/pkg/wasm_bg.wasm')
   .then(rsp => rsp.arrayBuffer());
-node.port.postMessage({wasm});
+node.port.postMessage({wasm}, [wasm]);
 
 if(document.readyState !== 'complete') {
   await new Promise(resolve =>
@@ -22,30 +22,32 @@ document.getElementById('play').addEventListener('input', ev => {
 });
 
 const size = 256;
-let bufLeft = new Float32Array(size);
-let bufRight = new Float32Array(size);
-node.port.postMessage({buffer: {left: bufLeft, right: bufRight }});
+let buffers = { left: new Float32Array(size), right: new Float32Array(size) };
+node.port.postMessage({buffers}, [buffers.left.buffer, buffers.right.buffer]);
 
 node.port.onmessage = ev => {
-  bufLeft.set(ev.data.buffer.left);
-  bufRight.set(ev.data.buffer.right);
+  buffers = ev.data.buffers;
 }
 
 function drawFrame() {
-  let dLeft = 'M ';
-  for(let i = 0; i < size; i++) {
-    dLeft += `${i * 6.28 / size} ${bufLeft[i]} L `;
+  if(buffers.left.byteLength > 0) {
+    let dLeft = 'M ';
+    for(let i = 0; i < size; i++) {
+      dLeft += `${i * 6.28 / size} ${buffers.left[i]} L `;
+    }
+    dLeft += `6.283 ${buffers.left[0]}`;
+    document.getElementById('pathLeft').setAttribute('d', dLeft);
+    let dRight = 'M ';
+    for(let i = 0; i < size; i++) {
+      dRight += `${i * 6.28 / size} ${buffers.right[i]} L `;
+    }
+    dRight += `6.283 ${buffers.right[0]}`;
+    document.getElementById('pathRight').setAttribute('d', dRight);
+    node.port.postMessage({buffers}, [buffers.left.buffer, buffers.right.buffer]);
+  } else {
+    console.log('wait');
   }
-  dLeft += `6.283 ${bufLeft[0]}`;
-  document.getElementById('pathLeft').setAttribute('d', dLeft);
-  let dRight = 'M ';
-  for(let i = 0; i < size; i++) {
-    dRight += `${i * 6.28 / size} ${bufRight[i]} L `;
-  }
-  dRight += `6.283 ${bufRight[0]}`;
-  document.getElementById('pathRight').setAttribute('d', dRight);
   requestAnimationFrame(drawFrame);
-  node.port.postMessage({buffer: {left: bufLeft, right: bufRight }});
 }
 
 requestAnimationFrame(drawFrame);
