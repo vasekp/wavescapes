@@ -14,12 +14,14 @@ input {
 
 label {
   position: absolute;
-  bottom: 3rem;
+  bottom: 0;
   width: 100%;
   text-align: center;
   color: white;
   font-size: 200%;
   z-index: 1;
+  height: 20vh;
+  line-height: 20vh;
 }
 
 input:not(:checked) + label::after {

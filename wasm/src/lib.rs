@@ -5,7 +5,13 @@ use rand::{Rng, distr::Uniform, SeedableRng};
 // Compile with:
 // RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web
 
-const MTP: [f32; 6] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+//const MTP: [f32; 6] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+//const MTP: [f32; 5] = [1.0, 2.0, 3.0, 4.0, 5.0];
+//const MTP: [f32; 3] = [1.0, 1.25, 1.5];
+//const MTP: [f32; 3] = [1.0, 4./3., 5./3.];
+const MTP: [f32; 5] = [1.0, 4./3., 5./3., 2.0, 8./3.];
+//const MTP: [f32; 5] = [4./4., 5./4., 6./4., 8./4., 10./4.];
+const ATTEN: i32 = 0;
 const DIM: usize = MTP.len();
 type Mat = SMatrix::<Complex<f32>, DIM, DIM>;
 
@@ -109,7 +115,7 @@ impl Generator {
             let mut res: Complex<f32> = 0.0.into();
             for ix in 0..DIM {
                 self.cx[ix] *= self.cx_step[ix];
-                res += self.cx[ix] * params.unit[ix] / MTP[ix];
+                res += self.cx[ix] * params.unit[ix] / MTP[ix].powi(ATTEN);
             }
             *x = res.re / DIVIDER;
         }
@@ -147,9 +153,9 @@ pub fn get_sample(left: &mut [f32], right: &mut [f32], handle: usize) -> () {
     let inst = unsafe { Instance::from_handle(handle) };
     let len = left.len();
     assert!(right.len() == left.len());
-    let mut generator = Generator::new(4.0 * std::f32::consts::TAU / (len as f32), 0.0);
+    let mut generator = Generator::new(3.0 * std::f32::consts::TAU / (len as f32), 0.0);
     generator.generate(left, &mut inst.params[0]);
-    let mut generator = Generator::new(4.0 * std::f32::consts::TAU / (len as f32), 0.0);
+    let mut generator = Generator::new(3.0 * std::f32::consts::TAU / (len as f32), 0.0);
     generator.generate(right, &mut inst.params[1]);
 }
 
